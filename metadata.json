@@ -1,0 +1,6 @@
+{
+  "name": "Discord RP Absensi Manager",
+  "description": "Sistem pelacak absensi otomatis server Discord Roleplay via reaksi pesan. Cek hadir & alpha harian serta rekap statistik bulanan untuk ekspor spreadsheet.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
