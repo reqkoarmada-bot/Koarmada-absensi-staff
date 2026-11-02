@@ -1,181 +1,147 @@
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
- */
+import { Member, BotConfig, AttendanceDay } from '../types/attendance';
+import { INITIAL_MEMBERS, DEFAULT_CONFIG, generateInitialDays } from '../data/mockRPData';
 
-import React, { useState } from 'react';
-import { Member, BotConfig, AttendanceDay } from './types/attendance';
-import {
-  loadMembers,
-  saveMembers,
-  loadConfig,
-  saveConfig,
-  loadDays,
-  saveDays,
-} from './utils/storage';
-import { Header } from './components/Header';
-import { MonthlyCalendarView } from './components/MonthlyCalendarView';
-import { DailyView } from './components/DailyView';
-import { BotConfigView } from './components/BotConfigView';
-import { DMWarningModal } from './components/DMWarningModal';
-import { DiscordSyncModal } from './components/DiscordSyncModal';
+const STORAGE_KEYS = {
+  MEMBERS: 'absensi_rp_members_v3',
+  CONFIG: 'absensi_rp_config_v3',
+  DAYS: 'absensi_rp_days_v4',
+};
 
-export default function App() {
-  const [members, setMembers] = useState<Member[]>(() => loadMembers());
-  const [config, setConfig] = useState<BotConfig>(() => loadConfig());
-  const [days, setDays] = useState<Record<string, AttendanceDay>>(() => loadDays(loadMembers()));
+export function normalizeMembers(members: Member[]): Member[] {
+  const deduped = new Map<string, Member>();
 
-  const [currentView, setCurrentView] = useState<'calendar' | 'daily' | 'config'>('calendar');
-  const [selectedDate, setSelectedDate] = useState<string>('2026-10-31');
-  const [currentYear, setCurrentYear] = useState<number>(2026);
-  const [currentMonth, setCurrentMonth] = useState<number>(10);
+  const getKey = (member: Member) => {
+    const discordId = member.discordId?.trim();
+    if (discordId) return `discord:${discordId.toLowerCase()}`;
 
-  // Modals
-  const [isSyncModalOpen, setIsSyncModalOpen] = useState<boolean>(false);
-  const [dmTargetRecipients, setDmTargetRecipients] = useState<Member[] | null>(null);
+    const username = member.username?.trim();
+    if (username) return `username:${username.toLowerCase()}`;
 
-  // Handlers for members & config
-  const handleSaveConfig = (newConfig: BotConfig) => {
-    setConfig(newConfig);
-    saveConfig(newConfig);
+    const name = member.name?.trim();
+    if (name) return `name:${name.toLowerCase()}`;
+
+    return `id:${member.id || Math.random().toString(36).slice(2)}`;
   };
 
-  const handleSaveMembers = (newMembers: Member[]) => {
-    setMembers(newMembers);
-    saveMembers(newMembers);
+  const mergeRoles = (a?: string[], b?: string[]) => {
+    const roles = [...(a || []), ...(b || [])]
+      .map((role) => role?.trim())
+      .filter((role): role is string => Boolean(role));
+
+    return Array.from(new Set(roles));
   };
 
-  const handleSaveDays = (newDays: Record<string, AttendanceDay>) => {
-    setDays(newDays);
-    saveDays(newDays);
-  };
+  const safeMember = (member: Member): Member => ({
+    ...member,
+    id: member.id || `member-${Math.random().toString(36).slice(2, 10)}`,
+    discordId: member.discordId || '',
+    name: member.name || member.username || 'Unknown Member',
+    username: member.username || member.name || 'unknown_member',
+    roles: member.roles ? [...new Set(member.roles.map((r) => r.trim()).filter(Boolean))] : [],
+  });
 
-  // Get active session for selected date
-  const currentSession: AttendanceDay = days[selectedDate] || {
-    date: selectedDate,
-    presentIds: [],
-  };
+  for (const rawMember of Array.isArray(members) ? members : []) {
+    const member = safeMember(rawMember);
+    const key = getKey(member);
+    const existing = deduped.get(key);
 
-  // Toggle member attendance status on selected date
-  const handleToggleStatus = (memberId: string) => {
-    const presentSet = new Set(currentSession.presentIds || []);
-    if (presentSet.has(memberId)) {
-      presentSet.delete(memberId);
-    } else {
-      presentSet.add(memberId);
+    if (!existing) {
+      deduped.set(key, member);
+      continue;
     }
 
-    const updatedSession: AttendanceDay = {
-      ...currentSession,
-      presentIds: Array.from(presentSet),
-      syncedAt: new Date().toISOString(),
-    };
-
-    const updatedDays = {
-      ...days,
-      [selectedDate]: updatedSession,
-    };
-
-    handleSaveDays(updatedDays);
-  };
-
-  // Callback when DM warnings are sent
-  const handleDMSent = (memberIds: string[]) => {
-    const sentSet = new Set([...(currentSession.dmSentIds || []), ...memberIds]);
-    const updatedSession: AttendanceDay = {
-      ...currentSession,
-      dmSentIds: Array.from(sentSet),
-    };
-    handleSaveDays({
-      ...days,
-      [selectedDate]: updatedSession,
+    deduped.set(key, {
+      ...existing,
+      ...member,
+      id: existing.id || member.id,
+      discordId: existing.discordId || member.discordId,
+      name: existing.name || member.name,
+      username: existing.username || member.username,
+      avatarUrl: existing.avatarUrl || member.avatarUrl,
+      roles: mergeRoles(existing.roles, member.roles),
     });
-  };
+  }
 
-  // Callback when Discord reaction sync completes
-  const handleSyncComplete = (syncedDay: AttendanceDay) => {
-    const updatedDays = {
-      ...days,
-      [syncedDay.date]: syncedDay,
-    };
-    handleSaveDays(updatedDays);
-  };
-
-  const handlePopulateMonth = (newDays: Record<string, AttendanceDay>) => {
-    const updated = { ...days, ...newDays };
-    setDays(updated);
-    saveDays(updated);
-  };
-
-  return (
-    <div className="min-h-screen bg-[#0c0f17] text-slate-100 flex flex-col font-sans selection:bg-indigo-600/30 selection:text-indigo-200">
-      {/* Header matching Screenshot 1 & 2 */}
-      <Header
-        currentView={currentView}
-        onViewChange={setCurrentView}
-        onOpenSync={() => setIsSyncModalOpen(true)}
-      />
-
-      {/* Main View Area */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
-        {currentView === 'calendar' && (
-          <MonthlyCalendarView
-            members={members}
-            days={days}
-            config={config}
-            currentYear={currentYear}
-            currentMonth={currentMonth}
-            onMonthChange={(y, m) => {
-              setCurrentYear(y);
-              setCurrentMonth(m);
-            }}
-            onOpenDMModal={(recipient) => setDmTargetRecipients([recipient])}
-            onPopulateMonth={handlePopulateMonth}
-          />
-        )}
-
-        {currentView === 'daily' && (
-          <DailyView
-            selectedDate={selectedDate}
-            onDateChange={setSelectedDate}
-            members={members}
-            session={currentSession}
-            config={config}
-            onToggleStatus={handleToggleStatus}
-            onOpenSingleDM={(m) => setDmTargetRecipients([m])}
-            onOpenBatchDM={(absentList) => setDmTargetRecipients(absentList)}
-            onOpenSync={() => setIsSyncModalOpen(true)}
-          />
-        )}
-
-        {currentView === 'config' && (
-          <BotConfigView
-            config={config}
-            onSaveConfig={handleSaveConfig}
-            members={members}
-            onImportMembers={handleSaveMembers}
-          />
-        )}
-      </main>
-
-      {/* Modals */}
-      <DMWarningModal
-        isOpen={!!dmTargetRecipients && dmTargetRecipients.length > 0}
-        onClose={() => setDmTargetRecipients(null)}
-        recipients={dmTargetRecipients || []}
-        config={config}
-        selectedDate={selectedDate}
-        onDMSent={handleDMSent}
-      />
-
-      <DiscordSyncModal
-        isOpen={isSyncModalOpen}
-        onClose={() => setIsSyncModalOpen(false)}
-        config={config}
-        members={members}
-        selectedDate={selectedDate}
-        onSyncComplete={handleSyncComplete}
-      />
-    </div>
-  );
+  return Array.from(deduped.values())
+    .filter((member) => Boolean(member.name) && Boolean(member.username))
+    .sort((a, b) => a.name.localeCompare(b.name, 'id'));
 }
+
+export function loadMembers(): Member[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.MEMBERS);
+    if (!raw) return normalizeMembers(INITIAL_MEMBERS);
+    const parsed = JSON.parse(raw);
+    const safeParsed = Array.isArray(parsed) ? parsed : [];
+    return normalizeMembers(safeParsed.length > 0 ? safeParsed : INITIAL_MEMBERS);
+  } catch {
+    return normalizeMembers(INITIAL_MEMBERS);
+  }
+}
+
+export function saveMembers(members: Member[]): void {
+  try {
+    const cleaned = normalizeMembers(members);
+    localStorage.setItem(STORAGE_KEYS.MEMBERS, JSON.stringify(cleaned));
+  } catch (e) {
+    console.error('Failed to save members', e);
+  }
+}
+
+export function loadConfig(): BotConfig {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.CONFIG);
+    if (!raw) return DEFAULT_CONFIG;
+    return { ...DEFAULT_CONFIG, ...JSON.parse(raw) };
+  } catch {
+    return DEFAULT_CONFIG;
+  }
+}
+
+export function saveConfig(config: BotConfig): void {
+  try {
+    localStorage.setItem(STORAGE_KEYS.CONFIG, JSON.stringify(config));
+  } catch (e) {
+    console.error('Failed to save config', e);
+  }
+}
+
+export function loadDays(members: Member[]): Record<string, AttendanceDay> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.DAYS);
+    if (!raw) {
+      const initial = generateInitialDays(members);
+      saveDays(initial);
+      return initial;
+    }
+    const parsed = JSON.parse(raw);
+    return typeof parsed === 'object' && parsed !== null ? parsed : generateInitialDays(members);
+  } catch {
+    return generateInitialDays(members);
+  }
+}
+
+export function saveDays(days: Record<string, AttendanceDay>): void {
+  try {
+    localStorage.setItem(STORAGE_KEYS.DAYS, JSON.stringify(days));
+  } catch (e) {
+    console.error('Failed to save days', e);
+  }
+}
+
+export function resetAllData(): {
+  members: Member[];
+  config: BotConfig;
+  days: Record<string, AttendanceDay>;
+} {
+  const members = normalizeMembers(INITIAL_MEMBERS);
+  const config = DEFAULT_CONFIG;
+  const days = generateInitialDays(members);
+
+  saveMembers(members);
+  saveConfig(config);
+  saveDays(days);
+
+  return { members, config, days };
+}
+
