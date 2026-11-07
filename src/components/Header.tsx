@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Shield, RefreshCw, Calendar, CheckSquare, Settings, Menu, X } from 'lucide-react';
+import { RefreshCw, Calendar, CheckSquare, Settings, Menu, X } from 'lucide-react';
 
 interface HeaderProps {
   currentView: 'calendar' | 'daily' | 'config';
@@ -7,6 +7,8 @@ interface HeaderProps {
   onOpenSync: () => void;
   isSyncing?: boolean;
 }
+
+const KOARMADA_LOGO_URL = 'https://commons.wikimedia.org/wiki/Special:FilePath/Koarmada_RI.svg';
 
 export const Header: React.FC<HeaderProps> = ({
   currentView,
@@ -19,17 +21,17 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <header className="border-b border-slate-800 bg-[#0c0f17]/90 backdrop-blur-md sticky top-0 z-40">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between gap-4">
-        {/* Zone 1: Logo matching Screenshot 1 & 2 */}
         <div className="flex items-center gap-3 shrink-0">
-          <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center text-white shadow-md shadow-indigo-600/30">
-            <Shield className="w-5 h-5 fill-white/20" />
+          <div className="w-10 h-10 rounded-xl bg-white p-1 flex items-center justify-center shadow-md shadow-slate-950/30">
+            <img
+              src={KOARMADA_LOGO_URL}
+              alt="Lambang resmi Koarmada RI"
+              className="w-full h-full object-contain"
+            />
           </div>
-          <span className="text-lg font-bold text-white tracking-tight">
-            AbsensiRP
-          </span>
+          <span className="text-lg font-bold text-white tracking-tight">Absensi Koarmada</span>
         </div>
 
-        {/* Zone 2: Navigation Links */}
         <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-400">
           <button
             onClick={() => onViewChange('calendar')}
@@ -62,7 +64,6 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         </nav>
 
-        {/* Zone 3: Actions + Mobile Menu button */}
         <div className="flex items-center gap-2">
           <button
             onClick={onOpenSync}
@@ -76,13 +77,13 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             className="md:hidden p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+            aria-label={mobileMenuOpen ? 'Tutup menu' : 'Buka menu'}
           >
             {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
         </div>
       </div>
 
-      {/* Mobile Drawer */}
       {mobileMenuOpen && (
         <div className="md:hidden border-t border-slate-800 bg-[#0c0f17] px-4 py-3 space-y-1">
           <button
